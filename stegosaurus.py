@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 import wave, struct
 
@@ -29,10 +30,21 @@ def decode():
     comp_name = wav_file.getcompname()
     print("Compression name:", comp_name)
 
+    frame = wav_file.readframes(4).hex()
+    frame_list = list(frame)
+    
+    hexy = "0x"
+    for i in range(0,4):
+        hexy += frame_list[0+(i*8)]
+        hexy += frame_list[4+(i*8)]
+
+    message_len = int(hexy, 16)
+
+    print("Encoded message length:", message_len)
+
     result = ""
 
     message = args.message
-    message_len = len(message)
 
     for i in range(0, message_len):
         frame = wav_file.readframes(1).hex()
@@ -61,8 +73,9 @@ def reader():
             else:
                 return
 
-def main():
+def encode():
     wav_file = wave.open(args.wav, 'r')
+    message = open(args.message, 'r')
 
     channels = wav_file.getnchannels()
     print("Channels:", channels)
@@ -87,30 +100,51 @@ def main():
 
     output.setparams((channels, sample_width, frame_rate, wav_length, comp_type, comp_name))
 
-    message = args.message
-    message_len = len(message)
+    message_len = os.stat(args.message).st_size 
+    print("Size of message to be encoded:", message_len)
 
-    # wav_length = 300000 #temporary to shorten process of encoding
+    length_of_message_hex = hex(message_len)
+
+    padded = str.format('0x{:08X}', int(length_of_message_hex, 16))
+    padded_list = list(padded)
+    
+    frame = wav_file.readframes(4)
+    frame_list = list(frame.hex())
+    frame_list[0] = str(padded[2])
+    frame_list[4] = str(padded[3])
+    frame_list[8] = str(padded[4])
+    frame_list[12] = str(padded[5])
+    frame_list[16] = str(padded[6])
+    frame_list[20] = str(padded[7])
+    frame_list[24] = str(padded[8])
+    frame_list[28] = str(padded[9])
+    frame_bytes = bytes.fromhex(''.join(frame_list))
+    frame = bytes(frame_bytes)
+    output.writeframes(frame)
+
+    wav_length = 300000 #temporary to shorten process of encoding
 
     for i in range(0, wav_length):
         frame = wav_file.readframes(1)
-        # print(frame)
         frame_list = list(frame.hex())
-        # print(frame_list)
-        if i < message_len:
-            hexy = str(hex(ord(message[i])))
+        ch = message.read(1)
 
-            frame_list[0] = str(hexy[2])
-            frame_list[4] = str(hexy[3])
+        if ch:
+            hexy = str(hex(ord(ch)))
+
+            padded = str.format('0x{:02X}', int(hexy, 16))
+
+            frame_list[0] = str(padded[2])
+            frame_list[4] = str(padded[3])
 
             frame_bytes = bytes.fromhex(''.join(frame_list))
             frame = bytes(frame_bytes)
 
         output.writeframes(frame)
-        print(frame, end='')
 
     wav_file.close()
-    output.close()    
+    output.close() 
+    message.close()   
 
 if __name__ == "__main__":
 
@@ -119,7 +153,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Stegosaurus - Encode/Decode secret messages in WAV files')
 
     parser.add_argument('wav', help='Path to input WAV audio file.')
-    parser.add_argument('message', help='Message to be encoded in the given WAV file')
+    parser.add_argument('message', help='Path to text file to be encoded in the given WAV file')
     parser.add_argument('-d', action='store_true', help='Decode input_file')
 
     args = parser.parse_args()
@@ -128,7 +162,7 @@ if __name__ == "__main__":
         decode()
     else:
         time_before = time.time()
-        main()
+        encode()
         time_after = time.time()
         print("Total running time:", time_after - time_before)
 
